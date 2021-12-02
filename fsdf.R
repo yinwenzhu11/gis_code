@@ -4,3 +4,5 @@ b= 4+6
 " what is your name"
 "this ia really confusing"
 "it is not easy to get it "
+"this is a good way "
+"dfgsd"
