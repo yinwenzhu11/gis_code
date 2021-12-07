@@ -89,6 +89,7 @@ BluePlaquesSub.ppp <- ppp(x=BluePlaquesSub@coords[,1],
                           window=window)
 
 BluePlaquesSub@coords[,2]
+BluePlaquesSub@coords
 
 BluePlaquesSub.ppp %>%
   plot(.,pch=16,cex=0.5, 
@@ -117,9 +118,11 @@ Qcount <- BluePlaquesSub.ppp %>%
   as.data.frame() %>%
   dplyr::count(Var1=Freq)%>%
   dplyr::rename(Freqquadratcount=n)
+Qcount
 
 Qcount %>% 
   summarise_all(class)
+Qcount
 
 
 sums <- Qcount %>%
@@ -127,6 +130,7 @@ sums <- Qcount %>%
   mutate(total = Var1 * Freqquadratcount) %>%
   dplyr::summarise(across(everything(), sum))%>%
   dplyr::select(-Var1)
+sums
 
 
 lambda<- Qcount%>%
@@ -136,13 +140,15 @@ lambda<- Qcount%>%
   mutate(lambda=total/Freqquadratcount) %>%
   dplyr::select(lambda)%>%
   pull(lambda)
-
+lambda
+factorial
 
 QCountTable <- Qcount %>%
   mutate(Pr=((lambda^Var1)*exp(-lambda))/factorial(Var1))%>%
   #now calculate the expected counts based on our total number of plaques
   #and save them to the table
   mutate(Expected= (round(Pr * sums$Freqquadratcount, 0)))
+QCountTable
 
 #Compare the frequency distributions of the observed and expected point patterns
 plot(c(1,5),c(0,14), type="n",
@@ -178,6 +184,7 @@ install.packages("fpc")
 st_geometry(BoroughMap)
 
 
+
 #first extract the points from the spatial points data frame
 BluePlaquesSubPoints <- BluePlaquesSub %>%
   coordinates(.)%>%
@@ -190,7 +197,7 @@ db <- BluePlaquesSubPoints %>%
 #now plot the results
 plot(db, BluePlaquesSubPoints, main = "DBSCAN Output", frame = F)
 plot(BoroughMap$geometry, add=T)
-
+plot(BluePlaquesSubPoints)
 
 library(dbscan)
 
@@ -264,3 +271,64 @@ autoplot.OpenStreetMap(basemap_bng)+
                    group=dbcluster,
                    fill=dbcluster), 
                alpha = 0.5) 
+library(here)
+library(janitor)
+library(dplyr)
+LondonWards <- st_read("F:/Rdata/week6/London-wards-2018/London-wards-2018_ESRI/London_Ward.shp")%>%
+st_transform(.,27700)
+
+LondonWardsMerged <- st_read("F:/Rdata/week6/statistical-gis-boundaries-london/statistical-gis-boundaries-london/ESRI/London_Ward_CityMerged.shp")%>%
+  st_transform(.,27700)
+
+WardData <- read_csv("https://data.london.gov.uk/download/ward-profiles-and-atlas/772d2d64-e8c6-46cb-86f9-e52b4c7851bc/ward-profiles-excel-version.csv",
+                     na = c("NA", "n/a"),locale=locale(encoding="latin1")) %>%
+  clean_names()
+
+
+LondonWardsMerged <- LondonWardsMerged %>% 
+  left_join(WardData,
+            by = c('GSS_CODE' = 'new_code'))%>%
+  dplyr::distinct(GSS_CODE, .keep_all = T)%>%
+  dplyr::select(GSS_CODE, ward_name, average_gcse_capped_point_scores_2014)
+
+st_crs(LondonWardsMerged)
+
+tmap_mode("view")
+tm_shape(LondonWardsMerged) +
+  tm_polygons(col = NA, alpha = 0.5) +
+  tm_shape(BluePlaques) +
+  tm_dots(col = "blue")
+
+
+BluePlaquesSub <- BluePlaques[LondonWardsMerged,]
+
+tm_shape(LondonWardsMerged) +
+  tm_polygons(col = NA, alpha = 0.5) +
+  tm_shape(BluePlaquesSub) +
+  tm_dots(col = "blue")
+
+library(sf)
+points_sf_joined <- LondonWardsMerged%>%
+  st_join(BluePlaquesSub)%>%
+  add_count(ward_name)%>% #add_count是啥意思
+  janitor::clean_names()%>% 
+  mutate(area=st_area(.))%>%  #st_area啥意思
+  mutate(density = n/area)%>%  #n从哪里来
+  dplyr::select(density, ward_name, gss_code, n, average_gcse_capped_point_scores_2014)
+
+points_sf_joined<- points_sf_joined %>%  
+  group_by(gss_code)%>%
+  summarise(density = first(density),
+            ward_name = first(ward_name),#first（）啥意思
+            plaquecount= first(n))
+ 
+tm_shape(points_sf_joined)+
+  tm_polygons("denssity",
+              style="jenks",
+              palette="Puor",
+              midpoint=NA,
+              popup.vars = c("wardname","density"),
+              title="Blue Plaque Density")
+
+
+  
