@@ -323,12 +323,180 @@ points_sf_joined<- points_sf_joined %>%
             plaquecount= first(n))
  
 tm_shape(points_sf_joined)+
-  tm_polygons("denssity",
+  tm_polygons("density",
               style="jenks",
               palette="Puor",
               midpoint=NA,
               popup.vars = c("wardname","density"),
+              title="Blue Plaque Density")#出错了，某个地方敲错了？
+
+tm_shape(points_sf_joined) +
+  tm_polygons("density",
+              style="jenks",
+              palette="PuOr",
+              midpoint=NA,
+              popup.vars=c("wardname", "density"),
               title="Blue Plaque Density")
 
+install.packages('spdep')
+library(spdep)
+coordsW <- points_sf_joined%>%
+  st_centroid()%>%
+  st_geometry()
+
+plot(coordsW,axes=TRUE)
+
+
+
+LWard_nb <- points_sf_joined %>%
+  poly2nb(., queen=T)
+summary(LWard_nb)
+
+plot(LWard_nb, st_geometry(coordsW), col="red")
+plot(points_sf_joined$geometry, add=T)
+
+
+Lward.lw <- LWard_nb %>%
+  nb2mat(., style="B")
+
+sum(Lward.lw)
+
+sum(Lward.lw[,1])
+
+Lward.lw <- LWard_nb %>%
+  nb2listw(., style="C")
+
+Lward.lw
+
+I_LWard_Global_Density <- points_sf_joined %>%
+  pull(density)%>%
+  as.vector()%>%
+  moran.test(.,Lward.lw)
+
+I_LWard_Global_Density
+
+
+C_LWard_Global_Density <- 
+  points_sf_joined %>%
+  pull(density) %>%
+  as.vector()%>%
+  geary.test(., Lward.lw)
+
+C_LWard_Global_Density
+
+G_LWard_Global_Density <- 
+  points_sf_joined %>%
+  pull(density) %>%
+  as.vector()%>%
+  globalG.test(., Lward.lw)
+
+G_LWard_Global_Density
+
+
+
+I_LWard_Local_count <- points_sf_joined %>%
+  pull(plaquecount) %>%
+  as.vector()%>%
+  localmoran(., Lward.lw)%>%
+  as_tibble()
+
+I_LWard_Local_Density <- points_sf_joined %>%
+  pull(density) %>%
+  as.vector()%>%
+  localmoran(., Lward.lw)%>%
+  as_tibble()
+
+slice_head(I_LWard_Local_Density, n=5)
+
+
+points_sf_joined <- points_sf_joined %>%
+  mutate(plaque_count_I = as.numeric(I_LWard_Local_count$Ii))%>%
+  mutate(plaque_count_Iz =as.numeric(I_LWard_Local_count$Z.Ii))%>%
+  mutate(density_I =as.numeric(I_LWard_Local_Density$Ii))%>%
+  mutate(density_Iz =as.numeric(I_LWard_Local_Density$Z.Ii))
+
+install.packages('RColorBrewer ')
+library(RColorBrewer )
+breaks1<-c(-1000,-2.58,-1.96,-1.65,1.65,1.96,2.58,1000)
+
+MoranColours<- rev(brewer.pal(8, "RdGy"))
+
+
+Gi_LWard_Local_Density <- points_sf_joined %>%
+  pull(density) %>%
+  as.vector()%>%
+  localG(., Lward.lw)
+
+head(Gi_LWard_Local_Density)
+tm_shape(points_sf_joined) +
+  tm_polygons("plaque_count_Iz",
+              style="fixed",
+              breaks=breaks1,
+              palette=MoranColours,
+              midpoint=NA,
+              title="Local Moran's I, Blue Plaques in London")
+
+points_sf_joined <- points_sf_joined %>%
+  mutate(density_G = as.numeric(Gi_LWard_Local_Density))
+
+GIColours<- rev(brewer.pal(8, "RdBu"))
+tm_shape(points_sf_joined) +
+  tm_polygons("density_G",
+              style="fixed",
+              breaks=breaks1,
+              palette=GIColours,
+              midpoint=NA,
+              title="Gi*, Blue Plaques in London")
+
+
+slice_head(points_sf_joined, n=2)
+
+Datatypelist <- LondonWardsMerged %>% 
+  st_drop_geometry()%>%
+  summarise_all(class) %>%
+  pivot_longer(everything(), 
+               names_to="All_variables", 
+               values_to="Variable_class")
+
+Datatypelist
+
+
+I_LWard_Local_GCSE <- LondonWardsMerged %>%
+  arrange(GSS_CODE)%>%
+  pull(average_gcse_capped_point_scores_2014) %>%
+  as.vector()%>%
+  localmoran(., Lward.lw)%>%
+  as_tibble()
+
+points_sf_joined <- points_sf_joined %>%
+  arrange(gss_code)%>%
+  mutate(GCSE_LocIz = as.numeric(I_LWard_Local_GCSE$Z.Ii))
+
+
+tm_shape(points_sf_joined) +
+  tm_polygons("GCSE_LocIz",
+              style="fixed",
+              breaks=breaks1,
+              palette=MoranColours,
+              midpoint=NA,
+              title="Local Moran's I, GCSE Scores")
+
+G_LWard_Local_GCSE <- LondonWardsMerged %>%
+  dplyr::arrange(GSS_CODE)%>%
+  dplyr::pull(average_gcse_capped_point_scores_2014) %>%
+  as.vector()%>%
+  localG(., Lward.lw)
+
+points_sf_joined <- points_sf_joined %>%
+  dplyr::arrange(gss_code)%>%
+  dplyr::mutate(GCSE_LocGiz = as.numeric(G_LWard_Local_GCSE))
+
+tm_shape(points_sf_joined) +
+  tm_polygons("GCSE_LocGiz",
+              style="fixed",
+              breaks=breaks1,
+              palette=GIColours,
+              midpoint=NA,
+              title="Gi*, GCSE Scores")
 
   
